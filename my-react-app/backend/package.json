@@ -1,0 +1,39 @@
+{
+  "name": "restaurant-management-api",
+  "version": "1.0.0",
+  "description": "Restaurant Management Backend API with Express, PostgreSQL, and Real-time Features",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "db:migrate": "node src/db/initialize.js",
+    "db:seed": "node src/db/seed.js",
+    "test": "jest"
+  },
+  "keywords": [
+    "restaurant",
+    "management",
+    "api",
+    "express",
+    "postgresql"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "pg": "^8.8.0",
+    "dotenv": "^16.0.3",
+    "jsonwebtoken": "^9.0.0",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "helmet": "^7.0.0",
+    "express-validator": "^7.0.0",
+    "socket.io": "^4.5.4",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2",
+    "jest": "^29.7.0",
+    "supertest": "^6.3.3"
+  }
+}
