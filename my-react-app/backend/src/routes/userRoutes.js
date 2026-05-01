@@ -14,6 +14,7 @@ router.post('/users', authenticateToken, authorize(['admin']), userController.cr
 router.get('/users', authenticateToken, authorize(['admin', 'manager']), userController.getAllUsers);
 router.get('/users/:id', authenticateToken, userController.getUserById);
 router.put('/users/:id', authenticateToken, userController.updateUser);
+router.patch('/users/:id/password', authenticateToken, userController.changePassword);
 router.delete('/users/:id', authenticateToken, authorize(['admin']), userController.deleteUser);
 
 module.exports = router;

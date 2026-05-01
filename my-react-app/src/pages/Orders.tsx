@@ -21,14 +21,17 @@ export default function Orders() {
   const { orders, menuItems, addOrder, updateOrder, currentUser, users } = useStore();
   const [showNewOrder, setShowNewOrder] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
-  const [filter, setFilter] = useState<'all' | OrderType>('all');
+  const [filter, setFilter] = useState<'all' | 'active' | OrderType>('all');
   const [searchTerm, setSearchTerm] = useState('');
   
+  const activeStatuses: Order['status'][] = ['pending', 'preparing', 'ready', 'served', 'delivered'];
+
   // Get list of waiters for selection
   const waiters = users.filter(u => u.role === 'waiter' && u.active);
   
   const filteredOrders = orders.filter(order => {
-    const matchesFilter = filter === 'all' || order.type === filter;
+    const matchesFilter = filter === 'all'
+      || (filter === 'active' ? activeStatuses.includes(order.status) : order.type === filter);
     const matchesSearch = order.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.customerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.tableNumber?.toString().includes(searchTerm) ||
@@ -112,7 +115,7 @@ export default function Orders() {
           />
         </div>
         <div className="flex gap-2">
-          {(['all', 'dine-in', 'takeaway', 'delivery'] as const).map(f => (
+          {(['all', 'active', 'dine-in', 'takeaway', 'delivery'] as const).map(f => (
             <button
               key={f}
               onClick={() => setFilter(f)}
@@ -125,11 +128,13 @@ export default function Orders() {
               `}
             >
               {f === 'all' && <Filter size={18} />}
+              {f === 'active' && <ShoppingCart size={18} />}
               {f === 'dine-in' && <UtensilsCrossed size={18} />}
               {f === 'takeaway' && <Package size={18} />}
               {f === 'delivery' && <Truck size={18} />}
               <span className="hidden sm:inline">
                 {f === 'all' && 'Toutes'}
+                {f === 'active' && 'Actives'}
                 {f === 'dine-in' && 'Sur place'}
                 {f === 'takeaway' && 'À emporter'}
                 {f === 'delivery' && 'Livraison'}

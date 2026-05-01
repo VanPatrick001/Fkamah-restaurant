@@ -19,6 +19,19 @@ const initializeDatabase = async () => {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
+
+    // Cooks table for chef management and kitchen assignment
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS cooks (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        station VARCHAR(100) DEFAULT 'Main Kitchen',
+        is_active BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id)
+      );
+    `);
     await pool.query(`
       ALTER TABLE users
       DROP CONSTRAINT IF EXISTS users_role_check,
@@ -75,9 +88,11 @@ const initializeDatabase = async () => {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS orders (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        table_id UUID NOT NULL REFERENCES tables(id) ON DELETE SET NULL,
+        table_id UUID REFERENCES tables(id) ON DELETE SET NULL,
         user_id UUID NOT NULL REFERENCES users(id) ON DELETE SET NULL,
+        order_type VARCHAR(50) DEFAULT 'dine-in' CHECK (order_type IN ('dine-in', 'takeaway', 'delivery')),
         status VARCHAR(50) DEFAULT 'pending' CHECK (status IN ('pending', 'confirmed', 'preparing', 'ready', 'served', 'completed', 'cancelled')),
+        payment_status VARCHAR(50) DEFAULT 'unpaid' CHECK (payment_status IN ('unpaid', 'paid', 'partial')),
         total_amount DECIMAL(10, 2) DEFAULT 0,
         tax_amount DECIMAL(10, 2) DEFAULT 0,
         discount_amount DECIMAL(10, 2) DEFAULT 0,
@@ -85,6 +100,16 @@ const initializeDatabase = async () => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+    `);
+
+    await pool.query(`
+      ALTER TABLE orders
+      ADD COLUMN IF NOT EXISTS order_type VARCHAR(50) DEFAULT 'dine-in' CHECK (order_type IN ('dine-in', 'takeaway', 'delivery')); 
+    `);
+
+    await pool.query(`
+      ALTER TABLE orders
+      ADD COLUMN IF NOT EXISTS payment_status VARCHAR(50) DEFAULT 'unpaid' CHECK (payment_status IN ('unpaid', 'paid', 'partial'));
     `);
 
     // Order items table
@@ -102,6 +127,18 @@ const initializeDatabase = async () => {
       );
     `);
 
+    // Order history table for audit logging
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS order_history (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+        user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+        action VARCHAR(100) NOT NULL,
+        details JSONB,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
     // Notifications table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS notifications (
@@ -112,6 +149,36 @@ const initializeDatabase = async () => {
         message TEXT NOT NULL,
         order_id UUID REFERENCES orders(id) ON DELETE SET NULL,
         is_read BOOLEAN DEFAULT false,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // Group policy tables
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS permission_groups (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name VARCHAR(100) NOT NULL UNIQUE,
+        description TEXT,
+        is_active BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS group_permissions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        group_id UUID NOT NULL REFERENCES permission_groups(id) ON DELETE CASCADE,
+        action VARCHAR(100) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_groups (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        group_id UUID NOT NULL REFERENCES permission_groups(id) ON DELETE CASCADE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);

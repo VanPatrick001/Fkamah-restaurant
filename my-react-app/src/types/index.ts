@@ -53,6 +53,12 @@ export interface Order {
   notes?: string;
 }
 
+export interface Group {
+  id: string;
+  name: string;
+  description?: string;
+}
+
 export interface Table {
   id: string;
   number: number;

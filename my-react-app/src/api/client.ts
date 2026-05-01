@@ -51,9 +51,63 @@ export const createUserApi = (body: {
   role: string;
   phone?: string;
   isActive?: boolean;
+  groupIds?: string[];
 }) => request('/auth/users', {
   method: 'POST',
   body: JSON.stringify(body),
 });
-export const fetchOrdersApi = () => request('/orders');
+export const changePasswordApi = (userId: string, body: { oldPassword?: string; newPassword: string }) =>
+  request(`/auth/users/${userId}/password`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+export const fetchOrdersApi = (params?: { status?: string; active?: boolean; tableId?: string }) => {
+  const query = new URLSearchParams();
+  if (params?.status) query.set('status', params.status);
+  if (params?.active) query.set('active', 'true');
+  if (params?.tableId) query.set('tableId', params.tableId);
+  const queryString = query.toString() ? `?${query.toString()}` : '';
+  return request(`/orders${queryString}`);
+};
+export const createOrderApi = (body: {
+  orderType?: string;
+  tableId?: string | null;
+  userId: string;
+  items: Array<{ menuItemId: string; quantity: number; specialInstructions?: string }>;
+  notes?: string;
+}) => request('/orders', {
+  method: 'POST',
+  body: JSON.stringify(body),
+});
+export const updateOrderApi = (orderId: string, body: {
+  status?: string;
+  totalAmount?: number;
+  taxAmount?: number;
+  discountAmount?: number;
+  notes?: string;
+}) => request(`/orders/${orderId}`, {
+  method: 'PUT',
+  body: JSON.stringify(body),
+});
+export const updateOrderStatusApi = (orderId: string, status: string) =>
+  request(`/orders/${orderId}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
+export const updateOrderPaymentStatusApi = (orderId: string, paymentStatus: string) =>
+  request(`/orders/${orderId}/payment`, {
+    method: 'PATCH',
+    body: JSON.stringify({ paymentStatus }),
+  });
+export const fetchGroupsApi = () => request('/groups');
+export const createGroupApi = (body: { name: string; description?: string }) =>
+  request('/groups', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+export const assignUsersToGroupApi = (groupId: string, userIds: string[]) =>
+  request(`/groups/${groupId}/users`, {
+    method: 'POST',
+    body: JSON.stringify({ userIds }),
+  });
 export const fetchNotificationsApi = () => request('/notifications');

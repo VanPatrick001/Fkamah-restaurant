@@ -12,6 +12,7 @@ const menuRoutes = require('./routes/menuRoutes');
 const tableRoutes = require('./routes/tableRoutes');
 const orderRoutes = require('./routes/orderRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
+const groupRoutes = require('./routes/groupRoutes');
 
 const app = express();
 const server = http.createServer(app);
@@ -51,6 +52,7 @@ app.use('/api/auth', userRoutes);
 app.use('/api', menuRoutes);
 app.use('/api', tableRoutes);
 app.use('/api', orderRoutes);
+app.use('/api', groupRoutes);
 app.use('/api', notificationRoutes);
 
 // Make io accessible to routes

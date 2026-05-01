@@ -80,7 +80,7 @@ const login = async (req, res) => {
 
 const createUser = async (req, res) => {
   try {
-    const { email, password, firstName, lastName, role, phone, isActive } = req.body;
+    const { email, password, firstName, lastName, role, phone, isActive, groupIds } = req.body;
 
     if (!email || !password || !firstName || !lastName || !role) {
       return res.status(400).json({ error: 'Email, mot de passe, nom, prénom et rôle sont requis' });
@@ -93,12 +93,24 @@ const createUser = async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    const userId = uuidv4();
     const result = await pool.query(
       `INSERT INTO users (id, email, password, first_name, last_name, role, phone, is_active)
        VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, true))
        RETURNING id, email, first_name, last_name, role, phone, is_active, created_at, updated_at`,
-      [uuidv4(), email, hashedPassword, firstName, lastName, role, phone || null, isActive]
+      [userId, email, hashedPassword, firstName, lastName, role, phone || null, isActive]
     );
+
+    if (Array.isArray(groupIds) && groupIds.length > 0) {
+      for (const groupId of groupIds) {
+        await pool.query(
+          `INSERT INTO user_groups (id, user_id, group_id)
+           VALUES ($1, $2, $3)
+           ON CONFLICT DO NOTHING`,
+          [uuidv4(), userId, groupId]
+        );
+      }
+    }
 
     res.status(201).json({ user: result.rows[0] });
   } catch (error) {
@@ -169,6 +181,43 @@ const updateUser = async (req, res) => {
   }
 };
 
+const changePassword = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { oldPassword, newPassword } = req.body;
+
+    if (!newPassword) {
+      return res.status(400).json({ error: 'Le nouveau mot de passe est requis' });
+    }
+
+    const result = await pool.query('SELECT id, password FROM users WHERE id = $1', [id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Utilisateur introuvable' });
+    }
+
+    const user = result.rows[0];
+
+    if (req.user.role !== 'admin') {
+      if (!oldPassword) {
+        return res.status(400).json({ error: 'L ancien mot de passe est requis' });
+      }
+
+      const isPasswordValid = await bcrypt.compare(oldPassword, user.password);
+      if (!isPasswordValid) {
+        return res.status(401).json({ error: 'Ancien mot de passe invalide' });
+      }
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await pool.query('UPDATE users SET password = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [hashedPassword, id]);
+
+    res.json({ message: 'Mot de passe mis à jour avec succès' });
+  } catch (error) {
+    console.error('Change password error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
 const deleteUser = async (req, res) => {
   try {
     const { id } = req.params;
@@ -192,5 +241,6 @@ module.exports = {
   getAllUsers,
   getUserById,
   updateUser,
+  changePassword,
   deleteUser,
 };

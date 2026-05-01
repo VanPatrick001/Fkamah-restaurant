@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import type { User, Order, MenuItem, Table, OrderStatus, PaymentStatus, UserRole } from '../types';
-import { loginApi, fetchMenuItemsApi, fetchTablesApi, fetchUsersApi, createUserApi } from '../api/client';
+import { loginApi, fetchMenuItemsApi, fetchTablesApi, fetchUsersApi, createUserApi,
+  fetchOrdersApi, createOrderApi, updateOrderApi, updateOrderStatusApi, updateOrderPaymentStatusApi,
+  changePasswordApi, fetchGroupsApi } from '../api/client';
 
 interface Notification {
   id: string;
@@ -29,6 +31,7 @@ interface AppState {
   menuItems: MenuItem[];
   tables: Table[];
   notifications: Notification[];
+  groups?: Array<{ id: string; name: string; description?: string }>;
   
   // Auth actions
   initializeApp: () => Promise<void>;
@@ -37,13 +40,16 @@ interface AppState {
   loadMenuItems: () => Promise<void>;
   loadTables: () => Promise<void>;
   loadUsers: () => Promise<void>;
+  loadOrders: () => Promise<void>;
+  loadGroups: () => Promise<void>;
   addUser: (user: NewUserPayload) => Promise<boolean>;
+  changePassword: (userId: string, oldPassword: string | undefined, newPassword: string) => Promise<boolean>;
   
   // Order actions
-  addOrder: (order: Omit<Order, 'id' | 'createdAt' | 'updatedAt'>) => void;
-  updateOrder: (orderId: string, items: Order['items'], total: number) => void;
-  updateOrderStatus: (orderId: string, status: OrderStatus) => void;
-  updatePaymentStatus: (orderId: string, status: PaymentStatus) => void;
+  addOrder: (order: Omit<Order, 'id' | 'createdAt' | 'updatedAt'>) => Promise<boolean>;
+  updateOrder: (orderId: string, items: Order['items'], total: number) => Promise<boolean>;
+  updateOrderStatus: (orderId: string, status: OrderStatus) => Promise<boolean>;
+  updatePaymentStatus: (orderId: string, status: PaymentStatus) => Promise<boolean>;
   
   // User actions
   updateUser: (id: string, data: Partial<User>) => void;
@@ -123,58 +129,7 @@ const initialTables: Table[] = Array.from({ length: 12 }, (_, i) => ({
   status: 'available' as const,
 }));
 
-const initialOrders: Order[] = [
-  {
-    id: 'order-1',
-    type: 'dine-in',
-    status: 'preparing',
-    paymentStatus: 'unpaid',
-    items: [
-      { id: 'item-1', menuItem: initialMenuItems[0], quantity: 2, price: 190 }, // 2x Madhbi
-      { id: 'item-2', menuItem: initialMenuItems[20], quantity: 2, price: 30 }, // 2x Thé Yéménite
-    ],
-    total: 220,
-    tableNumber: 3,
-    waiter: initialUsers[3], // Khadija Serveuse
-    createdAt: new Date(Date.now() - 30 * 60000),
-    updatedAt: new Date(),
-  },
-  {
-    id: 'order-2',
-    type: 'delivery',
-    status: 'ready',
-    paymentStatus: 'unpaid',
-    items: [
-      { id: 'item-3', menuItem: initialMenuItems[4], quantity: 1, price: 130 }, // Mandi Mouton
-      { id: 'item-4', menuItem: initialMenuItems[7], quantity: 2, price: 70 }, // 2x Lahsa
-      { id: 'item-5', menuItem: initialMenuItems[11], quantity: 1, price: 25 }, // Houmous
-    ],
-    total: 225,
-    customerName: 'Mohammed Alami',
-    customerPhone: '0667891234',
-    customerAddress: '45 Rue Hassan II, Casablanca',
-    waiter: initialUsers[3], // Khadija Serveuse
-    createdAt: new Date(Date.now() - 45 * 60000),
-    updatedAt: new Date(),
-  },
-  {
-    id: 'order-3',
-    type: 'takeaway',
-    status: 'pending',
-    paymentStatus: 'unpaid',
-    items: [
-      { id: 'item-6', menuItem: initialMenuItems[3], quantity: 2, price: 240 }, // 2x Côtes de Mouton
-      { id: 'item-7', menuItem: initialMenuItems[14], quantity: 4, price: 120 }, // 4x Samboussa Viande
-      { id: 'item-8', menuItem: initialMenuItems[25], quantity: 2, price: 70 }, // 2x Bint Al Sahn
-    ],
-    total: 430,
-    customerName: 'Sara Bennani',
-    customerPhone: '0668912345',
-    waiter: initialUsers[3], // Khadija Serveuse
-    createdAt: new Date(Date.now() - 15 * 60000),
-    updatedAt: new Date(),
-  },
-];
+const initialOrders: Order[] = [];
 
 const formatBackendUser = (user: Record<string, unknown>): User => ({
   id: typeof user.id === 'string' ? user.id : '',
@@ -184,6 +139,53 @@ const formatBackendUser = (user: Record<string, unknown>): User => ({
   active: user.is_active !== false,
   phone: typeof user.phone === 'string' ? user.phone : '',
 });
+
+const formatOrderItem = (item: Record<string, unknown>) => {
+  const itemAny = item as Record<string, unknown>;
+  const menu = itemAny.menuItem as Record<string, unknown> | undefined;
+  return {
+    id: typeof itemAny.id === 'string' ? itemAny.id : `item-${Date.now()}`,
+    menuItem: {
+      id: typeof menu?.id === 'string' ? menu.id : typeof itemAny.menuItemId === 'string' ? itemAny.menuItemId : '',
+      name: typeof menu?.name === 'string' ? menu.name : '',
+      description: typeof menu?.description === 'string' ? menu.description : '',
+      price: Number(menu?.price ?? itemAny.unitPrice ?? 0),
+      category: typeof menu?.category === 'string' ? menu.category : 'Menu',
+      available: true,
+    },
+    quantity: Number(itemAny.quantity ?? 1),
+    price: Number(itemAny.unitPrice ?? itemAny.price ?? 0),
+    notes: typeof itemAny.specialInstructions === 'string' ? itemAny.specialInstructions : undefined,
+  };
+};
+
+const formatBackendOrder = (order: Record<string, unknown>): Order => {
+  const orderAny = order as Record<string, unknown>;
+  const waiter = orderAny.waiter as Record<string, unknown> | undefined;
+
+  return {
+    id: typeof orderAny.id === 'string' ? orderAny.id : '',
+    type: typeof orderAny.type === 'string' ? orderAny.type as Order['type'] : orderAny.table_id ? 'dine-in' : 'delivery',
+    status: typeof orderAny.status === 'string' ? orderAny.status as OrderStatus : 'pending',
+    paymentStatus: typeof orderAny.payment_status === 'string' ? orderAny.payment_status as PaymentStatus : 'unpaid',
+    items: Array.isArray(orderAny.items) ? orderAny.items.map(formatOrderItem) : [],
+    total: Number(orderAny.total_amount ?? 0),
+    tableNumber: orderAny.table_number ? Number(orderAny.table_number) : undefined,
+    customerName: typeof orderAny.customer_name === 'string' ? orderAny.customer_name : undefined,
+    customerPhone: typeof orderAny.customer_phone === 'string' ? orderAny.customer_phone : undefined,
+    customerAddress: typeof orderAny.customer_address === 'string' ? orderAny.customer_address : undefined,
+    waiter: waiter ? {
+      id: typeof waiter.id === 'string' ? waiter.id : '',
+      name: `${typeof waiter.first_name === 'string' ? waiter.first_name : ''} ${typeof waiter.last_name === 'string' ? waiter.last_name : ''}`.trim(),
+      email: typeof waiter.email === 'string' ? waiter.email : '',
+      role: typeof waiter.role === 'string' ? waiter.role as UserRole : 'waiter',
+      active: true,
+    } : undefined,
+    createdAt: new Date(typeof orderAny.created_at === 'string' ? orderAny.created_at : Date.now()),
+    updatedAt: new Date(typeof orderAny.updated_at === 'string' ? orderAny.updated_at : Date.now()),
+    notes: typeof orderAny.notes === 'string' ? orderAny.notes : undefined,
+  };
+};
 
 const formatBackendMenuItem = (item: Record<string, unknown>): MenuItem => ({
   id: typeof item.id === 'string' ? item.id : '',
@@ -224,6 +226,8 @@ export const useStore = create<AppState>((set, get) => ({
     if (token) {
       await get().loadTables();
       await get().loadUsers();
+      await get().loadOrders();
+      await get().loadGroups();
     }
   },
 
@@ -237,6 +241,8 @@ export const useStore = create<AppState>((set, get) => ({
 
       await get().loadMenuItems();
       await get().loadTables();
+      await get().loadOrders();
+      await get().loadGroups();
       if (user.role === 'admin' || user.role === 'manager') {
         await get().loadUsers();
       }
@@ -287,66 +293,120 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  addOrder: (orderData) => {
-    const newOrder: Order = {
-      ...orderData,
-      id: `order-${Date.now()}`,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-    set(state => ({ orders: [...state.orders, newOrder] }));
+  loadOrders: async () => {
+    if (!get().token) {
+      return;
+    }
 
-    // Notify kitchen
-    const waiterName = orderData.waiter?.name || 'Inconnu';
-    get().addNotification({
-      type: 'new_order',
-      message: `Nouvelle commande #${newOrder.id.slice(-4)} - ${orderData.type === 'dine-in' ? `Table ${orderData.tableNumber}` : orderData.customerName} (Serveur: ${waiterName})`,
-      orderId: newOrder.id,
-      forRole: ['cook', 'admin', 'manager'],
-    });
-  },
-
-  updateOrder: (orderId, items, total) => {
-    set(state => ({
-      orders: state.orders.map(o => 
-        o.id === orderId ? { ...o, items, total, updatedAt: new Date() } : o
-      )
-    }));
-
-    // Notify kitchen about modification
-    get().addNotification({
-      type: 'order_updated',
-      message: `Commande #${orderId.slice(-4)} modifiée`,
-      orderId,
-      forRole: ['cook', 'admin', 'manager'],
-    });
-  },
-
-  updateOrderStatus: (orderId, status) => {
-    const order = get().orders.find(o => o.id === orderId);
-    set(state => ({
-      orders: state.orders.map(o => 
-        o.id === orderId ? { ...o, status, updatedAt: new Date() } : o
-      )
-    }));
-
-    // Notify waiter when order is ready
-    if (status === 'ready' && order) {
-      get().addNotification({
-        type: 'order_ready',
-        message: `🍽️ Commande #${orderId.slice(-4)} PRÊTE! ${order.type === 'dine-in' ? `Table ${order.tableNumber}` : order.customerName}`,
-        orderId,
-        forRole: ['waiter', 'delivery', 'admin', 'manager'],
-      });
+    try {
+      const data = await fetchOrdersApi();
+      set({ orders: Array.isArray(data) ? data.map(formatBackendOrder) : [] });
+    } catch (error) {
+      console.error('Could not load orders from backend:', error);
     }
   },
 
-  updatePaymentStatus: (orderId, paymentStatus) => {
-    set(state => ({
-      orders: state.orders.map(o => 
-        o.id === orderId ? { ...o, paymentStatus, updatedAt: new Date() } : o
-      )
-    }));
+  loadGroups: async () => {
+    if (!get().token) {
+      return;
+    }
+
+    try {
+      const data = await fetchGroupsApi();
+      set({ groups: Array.isArray(data) ? data : [] });
+    } catch (error) {
+      console.error('Could not load groups from backend:', error);
+    }
+  },
+
+  addOrder: async (orderData) => {
+    try {
+      const table = orderData.tableNumber ? get().tables.find(t => t.number === orderData.tableNumber) : undefined;
+      const response = await createOrderApi({
+        orderType: orderData.type,
+        tableId: table?.id ?? null,
+        userId: orderData.waiter?.id ?? '',
+        items: orderData.items.map(item => ({
+          menuItemId: item.menuItem.id,
+          quantity: item.quantity,
+          specialInstructions: item.notes,
+        })),
+        notes: orderData.notes,
+      });
+
+      const backendOrder = formatBackendOrder(response);
+      set(state => ({ orders: [backendOrder, ...state.orders] }));
+      return true;
+    } catch (error) {
+      console.error('Could not create order:', error);
+      return false;
+    }
+  },
+
+  updateOrder: async (orderId, _items, total) => {
+    try {
+      const response = await updateOrderApi(orderId, { totalAmount: total });
+      const updatedOrder = formatBackendOrder(response);
+      set(state => ({
+        orders: state.orders.map(o =>
+          o.id === orderId ? updatedOrder : o
+        )
+      }));
+
+      get().addNotification({
+        type: 'order_updated',
+        message: `Commande #${orderId.slice(-4)} modifiée`,
+        orderId,
+        forRole: ['cook', 'admin', 'manager'],
+      });
+      return true;
+    } catch (error) {
+      console.error('Could not update order:', error);
+      return false;
+    }
+  },
+
+  updateOrderStatus: async (orderId, status) => {
+    try {
+      const response = await updateOrderStatusApi(orderId, status);
+      const updatedOrder = formatBackendOrder(response);
+      const order = get().orders.find(o => o.id === orderId);
+
+      set(state => ({
+        orders: state.orders.map(o =>
+          o.id === orderId ? updatedOrder : o
+        )
+      }));
+
+      if (status === 'ready' && order) {
+        get().addNotification({
+          type: 'order_ready',
+          message: `🍽️ Commande #${orderId.slice(-4)} PRÊTE! ${order.type === 'dine-in' ? `Table ${order.tableNumber}` : order.customerName}`,
+          orderId,
+          forRole: ['waiter', 'delivery', 'admin', 'manager'],
+        });
+      }
+      return true;
+    } catch (error) {
+      console.error('Could not update order status:', error);
+      return false;
+    }
+  },
+
+  updatePaymentStatus: async (orderId, paymentStatus) => {
+    try {
+      const response = await updateOrderPaymentStatusApi(orderId, paymentStatus);
+      const updatedOrder = formatBackendOrder(response);
+      set(state => ({
+        orders: state.orders.map(o =>
+          o.id === orderId ? updatedOrder : o
+        )
+      }));
+      return true;
+    } catch (error) {
+      console.error('Could not update payment status:', error);
+      return false;
+    }
   },
 
   addUser: async (userData) => {
@@ -378,6 +438,16 @@ export const useStore = create<AppState>((set, get) => ({
       return true;
     } catch (error) {
       console.error('Could not create user:', error);
+      return false;
+    }
+  },
+
+  changePassword: async (userId, oldPassword, newPassword) => {
+    try {
+      await changePasswordApi(userId, { oldPassword, newPassword });
+      return true;
+    } catch (error) {
+      console.error('Could not change password:', error);
       return false;
     }
   },
