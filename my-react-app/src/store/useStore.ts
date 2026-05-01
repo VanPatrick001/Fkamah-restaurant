@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import type { User, Order, MenuItem, Table, OrderStatus, PaymentStatus } from '../types';
+import type { User, Order, MenuItem, Table, OrderStatus, PaymentStatus, UserRole } from '../types';
+import { loginApi, fetchMenuItemsApi, fetchTablesApi, fetchUsersApi, createUserApi } from '../api/client';
 
 interface Notification {
   id: string;
@@ -11,7 +12,17 @@ interface Notification {
   createdAt: Date;
 }
 
+interface NewUserPayload {
+  name: string;
+  email: string;
+  phone?: string;
+  role: UserRole;
+  active: boolean;
+  password: string;
+}
+
 interface AppState {
+  token: string | null;
   currentUser: User | null;
   users: User[];
   orders: Order[];
@@ -20,8 +31,13 @@ interface AppState {
   notifications: Notification[];
   
   // Auth actions
-  login: (email: string, password: string) => boolean;
+  initializeApp: () => Promise<void>;
+  login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
+  loadMenuItems: () => Promise<void>;
+  loadTables: () => Promise<void>;
+  loadUsers: () => Promise<void>;
+  addUser: (user: NewUserPayload) => Promise<boolean>;
   
   // Order actions
   addOrder: (order: Omit<Order, 'id' | 'createdAt' | 'updatedAt'>) => void;
@@ -30,7 +46,6 @@ interface AppState {
   updatePaymentStatus: (orderId: string, status: PaymentStatus) => void;
   
   // User actions
-  addUser: (user: Omit<User, 'id'>) => void;
   updateUser: (id: string, data: Partial<User>) => void;
   deleteUser: (id: string) => void;
   
@@ -93,9 +108,9 @@ const initialMenuItems: MenuItem[] = [
 ];
 
 const initialUsers: User[] = [
-  { id: '1', name: 'Ahmed Admin', email: 'admin@babelfkamah.ma', role: 'admin', active: true, phone: '0661234567' },
-  { id: '2', name: 'Fatima Manager', email: 'manager@babelfkamah.ma', role: 'manager', active: true, phone: '0662345678' },
-  { id: '3', name: 'Hassan Cuisinier', email: 'cook@babelfkamah.ma', role: 'cook', active: true, phone: '0663456789' },
+  { id: '1', name: 'Admin User', email: 'admin@restaurant.com', role: 'admin', active: true, phone: '0661234567' },
+  { id: '2', name: 'Manager User', email: 'manager@restaurant.com', role: 'manager', active: true, phone: '0662345678' },
+  { id: '3', name: 'Staff User', email: 'staff@restaurant.com', role: 'staff', active: true, phone: '0663456789' },
   { id: '4', name: 'Khadija Serveuse', email: 'waiter@babelfkamah.ma', role: 'waiter', active: true, phone: '0664567890' },
   { id: '5', name: 'Omar Caissier', email: 'cashier@babelfkamah.ma', role: 'cashier', active: true, phone: '0665678901' },
   { id: '6', name: 'Youssef Livreur', email: 'delivery@babelfkamah.ma', role: 'delivery', active: true, phone: '0666789012' },
@@ -161,25 +176,117 @@ const initialOrders: Order[] = [
   },
 ];
 
+const formatBackendUser = (user: Record<string, unknown>): User => ({
+  id: typeof user.id === 'string' ? user.id : '',
+  name: `${typeof user.first_name === 'string' ? user.first_name : ''} ${typeof user.last_name === 'string' ? user.last_name : ''}`.trim() || (typeof user.email === 'string' ? user.email : ''),
+  email: typeof user.email === 'string' ? user.email : '',
+  role: typeof user.role === 'string' ? (user.role as UserRole) : 'staff',
+  active: user.is_active !== false,
+  phone: typeof user.phone === 'string' ? user.phone : '',
+});
+
+const formatBackendMenuItem = (item: Record<string, unknown>): MenuItem => ({
+  id: typeof item.id === 'string' ? item.id : '',
+  name: typeof item.name === 'string' ? item.name : '',
+  description: typeof item.description === 'string' ? item.description : '',
+  price: Number(item.price ?? 0),
+  category: typeof item.category === 'string' ? item.category : typeof item.category_id === 'string' ? item.category_id : 'Menu',
+  image: typeof item.image_url === 'string' ? item.image_url : typeof item.imageUrl === 'string' ? item.imageUrl : undefined,
+  available: item.is_available !== false,
+});
+
+const formatBackendTable = (table: Record<string, unknown>): Table => ({
+  id: typeof table.id === 'string' ? table.id : '',
+  number: Number(table.table_number ?? table.number ?? 0),
+  seats: Number(table.capacity ?? table.seats ?? 0),
+  status: typeof table.status === 'string' ? (table.status as Table['status']) : 'available',
+});
+
 export const useStore = create<AppState>((set, get) => ({
+  token: null,
   currentUser: null,
   users: initialUsers,
   orders: initialOrders,
   menuItems: initialMenuItems,
   tables: initialTables,
   notifications: [],
-  
-  login: (email: string, _password: string) => {
-    const user = get().users.find(u => u.email === email && u.active);
-    if (user) {
-      set({ currentUser: user });
-      return true;
+
+  initializeApp: async () => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+    const currentUser = typeof window !== 'undefined' ? localStorage.getItem('currentUser') : null;
+
+    if (token && currentUser) {
+      set({ token, currentUser: JSON.parse(currentUser) as User });
     }
-    return false;
+
+    await get().loadMenuItems();
+
+    if (token) {
+      await get().loadTables();
+      await get().loadUsers();
+    }
   },
-  
-  logout: () => set({ currentUser: null }),
-  
+
+  login: async (email: string, password: string) => {
+    try {
+      const response = await loginApi(email, password);
+      const user = formatBackendUser(response.user);
+      set({ currentUser: user, token: response.token, users: [user] });
+      localStorage.setItem('authToken', response.token);
+      localStorage.setItem('currentUser', JSON.stringify(user));
+
+      await get().loadMenuItems();
+      await get().loadTables();
+      if (user.role === 'admin' || user.role === 'manager') {
+        await get().loadUsers();
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Login failed:', error);
+      return false;
+    }
+  },
+
+  logout: () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('currentUser');
+    }
+    set({ currentUser: null, token: null, users: initialUsers, tables: initialTables, notifications: [] });
+  },
+
+  loadMenuItems: async () => {
+    try {
+      const data = await fetchMenuItemsApi();
+      set({ menuItems: data.map(formatBackendMenuItem) });
+    } catch (error) {
+      console.error('Could not load menu items from backend:', error);
+    }
+  },
+
+  loadTables: async () => {
+    try {
+      const data = await fetchTablesApi();
+      set({ tables: data.map(formatBackendTable) });
+    } catch (error) {
+      console.error('Could not load tables from backend:', error);
+    }
+  },
+
+  loadUsers: async () => {
+    if (!get().token) {
+      return;
+    }
+
+    try {
+      const data = await fetchUsersApi();
+      set({ users: data.map(formatBackendUser) });
+    } catch (error) {
+      console.error('Could not load users from backend:', error);
+    }
+  },
+
   addOrder: (orderData) => {
     const newOrder: Order = {
       ...orderData,
@@ -188,7 +295,7 @@ export const useStore = create<AppState>((set, get) => ({
       updatedAt: new Date(),
     };
     set(state => ({ orders: [...state.orders, newOrder] }));
-    
+
     // Notify kitchen
     const waiterName = orderData.waiter?.name || 'Inconnu';
     get().addNotification({
@@ -198,14 +305,14 @@ export const useStore = create<AppState>((set, get) => ({
       forRole: ['cook', 'admin', 'manager'],
     });
   },
-  
+
   updateOrder: (orderId, items, total) => {
     set(state => ({
       orders: state.orders.map(o => 
         o.id === orderId ? { ...o, items, total, updatedAt: new Date() } : o
       )
     }));
-    
+
     // Notify kitchen about modification
     get().addNotification({
       type: 'order_updated',
@@ -214,7 +321,7 @@ export const useStore = create<AppState>((set, get) => ({
       forRole: ['cook', 'admin', 'manager'],
     });
   },
-  
+
   updateOrderStatus: (orderId, status) => {
     const order = get().orders.find(o => o.id === orderId);
     set(state => ({
@@ -222,7 +329,7 @@ export const useStore = create<AppState>((set, get) => ({
         o.id === orderId ? { ...o, status, updatedAt: new Date() } : o
       )
     }));
-    
+
     // Notify waiter when order is ready
     if (status === 'ready' && order) {
       get().addNotification({
@@ -233,7 +340,7 @@ export const useStore = create<AppState>((set, get) => ({
       });
     }
   },
-  
+
   updatePaymentStatus: (orderId, paymentStatus) => {
     set(state => ({
       orders: state.orders.map(o => 
@@ -241,31 +348,56 @@ export const useStore = create<AppState>((set, get) => ({
       )
     }));
   },
-  
-  addUser: (userData) => {
-    const newUser: User = {
-      ...userData,
-      id: `user-${Date.now()}`,
-    };
-    set(state => ({ users: [...state.users, newUser] }));
+
+  addUser: async (userData) => {
+    try {
+      const [firstName, ...rest] = userData.name.trim().split(' ');
+      const lastName = rest.join(' ') || '';
+
+      const response = await createUserApi({
+        email: userData.email,
+        password: userData.password,
+        firstName,
+        lastName,
+        role: userData.role,
+        phone: userData.phone,
+        isActive: userData.active,
+      });
+
+      const created = response.user;
+      const createdUser: User = {
+        id: created.id,
+        name: `${created.first_name ?? ''} ${created.last_name ?? ''}`.trim() || created.email,
+        email: created.email,
+        role: created.role,
+        phone: created.phone || '',
+        active: created.is_active !== false,
+      };
+
+      set(state => ({ users: [...state.users, createdUser] }));
+      return true;
+    } catch (error) {
+      console.error('Could not create user:', error);
+      return false;
+    }
   },
-  
+
   updateUser: (id, data) => {
     set(state => ({
       users: state.users.map(u => u.id === id ? { ...u, ...data } : u)
     }));
   },
-  
+
   deleteUser: (id) => {
     set(state => ({ users: state.users.filter(u => u.id !== id) }));
   },
-  
+
   updateTableStatus: (tableId, status) => {
     set(state => ({
       tables: state.tables.map(t => t.id === tableId ? { ...t, status } : t)
     }));
   },
-  
+
   addMenuItem: (itemData) => {
     const newItem: MenuItem = {
       ...itemData,
@@ -273,17 +405,17 @@ export const useStore = create<AppState>((set, get) => ({
     };
     set(state => ({ menuItems: [...state.menuItems, newItem] }));
   },
-  
+
   updateMenuItem: (id, data) => {
     set(state => ({
       menuItems: state.menuItems.map(m => m.id === id ? { ...m, ...data } : m)
     }));
   },
-  
+
   deleteMenuItem: (id) => {
     set(state => ({ menuItems: state.menuItems.filter(m => m.id !== id) }));
   },
-  
+
   // Notification actions
   addNotification: (notificationData) => {
     const newNotification: Notification = {
@@ -294,7 +426,7 @@ export const useStore = create<AppState>((set, get) => ({
     };
     set(state => ({ notifications: [newNotification, ...state.notifications].slice(0, 50) }));
   },
-  
+
   markNotificationRead: (notificationId) => {
     set(state => ({
       notifications: state.notifications.map(n => 
@@ -302,7 +434,7 @@ export const useStore = create<AppState>((set, get) => ({
       )
     }));
   },
-  
+
   clearNotifications: () => {
     set({ notifications: [] });
   },

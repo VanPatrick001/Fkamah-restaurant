@@ -11,22 +11,26 @@ export default function Login() {
   const navigate = useNavigate();
   const { login, users } = useStore();
   
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    
-    if (login(email, password)) {
+
+    const success = await login(email, password);
+    if (success) {
       navigate('/dashboard');
     } else {
       setError('Email ou mot de passe incorrect');
     }
   };
-  
-  const quickLogin = (userEmail: string) => {
+
+  const quickLogin = async (userEmail: string, userPassword: string) => {
     setEmail(userEmail);
-    setPassword('demo');
-    if (login(userEmail, 'demo')) {
+    setPassword(userPassword);
+    const success = await login(userEmail, userPassword);
+    if (success) {
       navigate('/dashboard');
+    } else {
+      setError('Email ou mot de passe incorrect');
     }
   };
   
@@ -112,7 +116,16 @@ export default function Login() {
               {users.slice(0, 6).map(user => (
                 <button
                   key={user.id}
-                  onClick={() => quickLogin(user.email)}
+                  onClick={() => quickLogin(
+                    user.email,
+                    user.email.startsWith('admin') ? 'admin123'
+                      : user.email.startsWith('manager') ? 'manager123'
+                      : user.email.startsWith('cook') ? 'cook123'
+                      : user.email.startsWith('waiter') ? 'waiter123'
+                      : user.email.startsWith('cashier') ? 'cashier123'
+                      : user.email.startsWith('delivery') ? 'delivery123'
+                      : 'staff123'
+                  )}
                   className="px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-amber-100 text-sm transition-all truncate"
                 >
                   {user.role === 'admin' && '👑'}

@@ -12,12 +12,17 @@ const initializeDatabase = async () => {
         password VARCHAR(255) NOT NULL,
         first_name VARCHAR(100) NOT NULL,
         last_name VARCHAR(100) NOT NULL,
-        role VARCHAR(50) NOT NULL DEFAULT 'staff' CHECK (role IN ('admin', 'manager', 'staff', 'cashier')),
+        role VARCHAR(50) NOT NULL DEFAULT 'staff' CHECK (role IN ('admin', 'manager', 'staff', 'cashier', 'cook', 'waiter', 'delivery')),
         phone VARCHAR(20),
         is_active BOOLEAN DEFAULT true,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+    `);
+    await pool.query(`
+      ALTER TABLE users
+      DROP CONSTRAINT IF EXISTS users_role_check,
+      ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'manager', 'staff', 'cashier', 'cook', 'waiter', 'delivery'));
     `);
 
     // Menu categories table

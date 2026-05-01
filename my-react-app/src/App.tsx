@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useStore } from './store/useStore';
 import Layout from './components/Layout';
@@ -23,6 +24,12 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 function App() {
+  const initializeApp = useStore(state => state.initializeApp);
+
+  useEffect(() => {
+    void initializeApp();
+  }, [initializeApp]);
+
   return (
     <BrowserRouter>
       <Routes>

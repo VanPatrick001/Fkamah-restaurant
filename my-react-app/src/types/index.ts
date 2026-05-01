@@ -1,4 +1,4 @@
-export type UserRole = 'admin' | 'manager' | 'cook' | 'waiter' | 'cashier' | 'delivery';
+export type UserRole = 'admin' | 'manager' | 'staff' | 'cook' | 'waiter' | 'cashier' | 'delivery';
 
 export type OrderType = 'dine-in' | 'takeaway' | 'delivery';
 

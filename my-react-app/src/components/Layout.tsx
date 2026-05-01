@@ -52,6 +52,7 @@ const roleLabels: Record<UserRole, string> = {
   waiter: 'Serveur',
   cashier: 'Caissier',
   delivery: 'Livreur',
+  staff: 'Personnel',
 };
 
 const roleColors: Record<UserRole, string> = {
@@ -61,6 +62,7 @@ const roleColors: Record<UserRole, string> = {
   waiter: 'bg-green-500',
   cashier: 'bg-yellow-500',
   delivery: 'bg-red-500',
+  staff: 'bg-slate-500',
 };
 
 export default function Layout({ children }: LayoutProps) {

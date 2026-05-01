@@ -7,6 +7,9 @@ const { authenticateToken, authorize } = require('../middleware/auth');
 router.post('/register', userController.register);
 router.post('/login', userController.login);
 
+// Admin user management routes
+router.post('/users', authenticateToken, authorize(['admin']), userController.createUser);
+
 // Protected routes
 router.get('/users', authenticateToken, authorize(['admin', 'manager']), userController.getAllUsers);
 router.get('/users/:id', authenticateToken, userController.getUserById);

@@ -4,6 +4,15 @@ import { Plus, Search, Edit, Trash2, X, Users as UsersIcon, Mail, Phone, Shield 
 import { useStore } from '../store/useStore';
 import type { User, UserRole } from '../types';
 
+interface UserFormData {
+  name: string;
+  email: string;
+  phone?: string;
+  role: UserRole;
+  active: boolean;
+  password?: string;
+}
+
 const roleLabels: Record<UserRole, string> = {
   admin: 'Administrateur',
   manager: 'Manager',
@@ -11,6 +20,7 @@ const roleLabels: Record<UserRole, string> = {
   waiter: 'Serveur',
   cashier: 'Caissier',
   delivery: 'Livreur',
+  staff: 'Personnel',
 };
 
 const roleColors: Record<UserRole, string> = {
@@ -20,6 +30,7 @@ const roleColors: Record<UserRole, string> = {
   waiter: 'bg-green-500',
   cashier: 'bg-yellow-500',
   delivery: 'bg-red-500',
+  staff: 'bg-slate-500',
 };
 
 export default function Users() {
@@ -28,6 +39,7 @@ export default function Users() {
   const [selectedRole, setSelectedRole] = useState<UserRole | 'all'>('all');
   const [showModal, setShowModal] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [notification, setNotification] = useState('');
   
   const filteredUsers = users.filter(user => {
     const matchesSearch = user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -44,6 +56,45 @@ export default function Users() {
   const handleDelete = (id: string) => {
     if (confirm('Êtes-vous sûr de vouloir supprimer cet utilisateur ?')) {
       deleteUser(id);
+    }
+  };
+
+  const handleSave = async (data: UserFormData) => {
+    try {
+      if (editingUser) {
+        updateUser(editingUser.id, data);
+        setNotification('Utilisateur modifié localement.');
+      } else {
+        if (!data.password) {
+          setNotification('Le mot de passe est requis pour créer un compte.');
+          return;
+        }
+
+        const payload = {
+          ...data,
+          password: data.password,
+        } as {
+          name: string;
+          email: string;
+          phone?: string;
+          role: UserRole;
+          active: boolean;
+          password: string;
+        };
+
+        const success = await addUser(payload);
+        if (success) {
+          setNotification('Utilisateur créé en base.');
+        } else {
+          setNotification('Échec de la création utilisateur.');
+          return;
+        }
+      }
+      setShowModal(false);
+      setEditingUser(null);
+    } catch (error) {
+      console.error('User save error:', error);
+      setNotification('Échec de la création utilisateur.');
     }
   };
   
@@ -63,6 +114,11 @@ export default function Users() {
           Ajouter un utilisateur
         </button>
       </div>
+      {notification && (
+        <div className="rounded-2xl p-4 bg-amber-50 border border-amber-200 text-amber-900">
+          {notification}
+        </div>
+      )}
       
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
@@ -203,15 +259,7 @@ export default function Users() {
           <UserModal
             user={editingUser}
             onClose={() => { setShowModal(false); setEditingUser(null); }}
-            onSave={(data) => {
-              if (editingUser) {
-                updateUser(editingUser.id, data);
-              } else {
-                addUser(data as Omit<User, 'id'>);
-              }
-              setShowModal(false);
-              setEditingUser(null);
-            }}
+            onSave={handleSave}
           />
         )}
       </AnimatePresence>
@@ -222,7 +270,7 @@ export default function Users() {
 interface UserModalProps {
   user: User | null;
   onClose: () => void;
-  onSave: (data: Partial<User>) => void;
+  onSave: (data: UserFormData) => void;
 }
 
 function UserModal({ user, onClose, onSave }: UserModalProps) {
@@ -231,6 +279,8 @@ function UserModal({ user, onClose, onSave }: UserModalProps) {
   const [phone, setPhone] = useState(user?.phone || '');
   const [role, setRole] = useState<UserRole>(user?.role || 'waiter');
   const [active, setActive] = useState(user?.active ?? true);
+  const [password, setPassword] = useState('');
+  const [error] = useState('');
   
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -240,6 +290,7 @@ function UserModal({ user, onClose, onSave }: UserModalProps) {
       phone,
       role,
       active,
+      password: user ? undefined : password,
     });
   };
   
@@ -312,6 +363,19 @@ function UserModal({ user, onClose, onSave }: UserModalProps) {
               ))}
             </select>
           </div>
+
+          {!user && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Mot de passe</label>
+              <input
+                type="password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400/50"
+                required
+              />
+            </div>
+          )}
           
           <div className="flex items-center gap-3">
             <input
@@ -330,6 +394,9 @@ function UserModal({ user, onClose, onSave }: UserModalProps) {
           >
             {user ? 'Enregistrer' : 'Ajouter'}
           </button>
+          {error && (
+            <div className="text-sm text-red-600 mt-2">{error}</div>
+          )}
         </form>
       </motion.div>
     </motion.div>

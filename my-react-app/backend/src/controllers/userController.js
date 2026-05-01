@@ -78,6 +78,35 @@ const login = async (req, res) => {
   }
 };
 
+const createUser = async (req, res) => {
+  try {
+    const { email, password, firstName, lastName, role, phone, isActive } = req.body;
+
+    if (!email || !password || !firstName || !lastName || !role) {
+      return res.status(400).json({ error: 'Email, mot de passe, nom, prénom et rôle sont requis' });
+    }
+
+    const userExists = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+    if (userExists.rows.length > 0) {
+      return res.status(409).json({ error: 'User already exists' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const result = await pool.query(
+      `INSERT INTO users (id, email, password, first_name, last_name, role, phone, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, true))
+       RETURNING id, email, first_name, last_name, role, phone, is_active, created_at, updated_at`,
+      [uuidv4(), email, hashedPassword, firstName, lastName, role, phone || null, isActive]
+    );
+
+    res.status(201).json({ user: result.rows[0] });
+  } catch (error) {
+    console.error('Create user error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
 const getAllUsers = async (req, res) => {
   try {
     const result = await pool.query(
@@ -159,6 +188,7 @@ const deleteUser = async (req, res) => {
 module.exports = {
   register,
   login,
+  createUser,
   getAllUsers,
   getUserById,
   updateUser,

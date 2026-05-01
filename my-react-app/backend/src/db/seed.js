@@ -24,13 +24,40 @@ const seedDatabase = async () => {
       [uuidv4(), 'manager@restaurant.com', managerPassword, 'Manager', 'User', 'manager']
     );
 
-    // Create staff user
-    const staffPassword = await bcrypt.hash('staff123', 10);
+    // Create cook user
+    const cookPassword = await bcrypt.hash('cook123', 10);
     await pool.query(
       `INSERT INTO users (id, email, password, first_name, last_name, role)
        VALUES ($1, $2, $3, $4, $5, $6)
        ON CONFLICT (email) DO NOTHING`,
-      [uuidv4(), 'staff@restaurant.com', staffPassword, 'Staff', 'User', 'staff']
+      [uuidv4(), 'cook@restaurant.com', cookPassword, 'Chef', 'Cuisinier', 'cook']
+    );
+
+    // Create waiter user
+    const waiterPassword = await bcrypt.hash('waiter123', 10);
+    await pool.query(
+      `INSERT INTO users (id, email, password, first_name, last_name, role)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (email) DO NOTHING`,
+      [uuidv4(), 'waiter@restaurant.com', waiterPassword, 'Serveur', 'Service', 'waiter']
+    );
+
+    // Create cashier user
+    const cashierPassword = await bcrypt.hash('cashier123', 10);
+    await pool.query(
+      `INSERT INTO users (id, email, password, first_name, last_name, role)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (email) DO NOTHING`,
+      [uuidv4(), 'cashier@restaurant.com', cashierPassword, 'Caissier', 'Encaissement', 'cashier']
+    );
+
+    // Create delivery user
+    const deliveryPassword = await bcrypt.hash('delivery123', 10);
+    await pool.query(
+      `INSERT INTO users (id, email, password, first_name, last_name, role)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (email) DO NOTHING`,
+      [uuidv4(), 'delivery@restaurant.com', deliveryPassword, 'Livreur', 'Logistique', 'delivery']
     );
 
     // Create menu categories
