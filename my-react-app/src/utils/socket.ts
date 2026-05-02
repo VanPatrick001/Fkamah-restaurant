@@ -4,14 +4,14 @@ const BACKEND_URL = import.meta.env.VITE_API_URL || import.meta.env.VITE_BACKEND
 
 let socket: Socket | null = null;
 
-export const connectSocket = (token: string) => {
+export const connectSocket = () => {
   if (socket && socket.connected) {
     return socket;
   }
 
   socket = io(BACKEND_URL, {
-    auth: { token },
     transports: ['websocket'],
+    withCredentials: true,
   });
 
   socket.on('connect_error', (error) => {

@@ -91,8 +91,8 @@ export default function Layout({ children }: LayoutProps) {
     setLastNotificationCount(unreadCount);
   }, [unreadCount, lastNotificationCount]);
   
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     navigate('/login');
   };
   
@@ -101,12 +101,12 @@ export default function Layout({ children }: LayoutProps) {
   );
   
   useEffect(() => {
-    if (!currentUser || !token) {
+    if (!currentUser) {
       disconnectSocket();
       return;
     }
 
-    const socket = connectSocket(token);
+    const socket = connectSocket();
 
     const handleSocketNotification = (payload: any) => {
       addNotification({

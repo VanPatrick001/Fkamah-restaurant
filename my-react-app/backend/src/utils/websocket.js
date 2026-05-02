@@ -1,32 +1,41 @@
 const { verifyToken } = require('../utils/jwt');
 
-const setupWebSocket = (io) => {
+const setupWebSocket = (io, sessionMiddleware) => {
   io.use((socket, next) => {
-    const token = socket.handshake.auth.token;
-    if (!token) {
-      return next(new Error('Authentication failed'));
-    }
+    sessionMiddleware(socket.request, {}, async () => {
+      const session = socket.request.session;
+      if (session && session.userId) {
+        socket.userId = session.userId;
+        socket.userRole = session.userRole;
+        return next();
+      }
 
-    const user = verifyToken(token);
-    if (!user) {
-      return next(new Error('Invalid token'));
-    }
+      const token = socket.handshake.auth.token;
+      if (!token) {
+        return next(new Error('Authentication failed'));
+      }
 
-    socket.userId = user.id;
-    socket.userRole = user.role;
-    next();
+      const user = verifyToken(token);
+      if (!user) {
+        return next(new Error('Invalid token'));
+      }
+
+      socket.userId = user.id;
+      socket.userRole = user.role;
+      next();
+    });
   });
 
   io.on('connection', (socket) => {
     console.log(`User ${socket.userId} connected`);
 
-    // Join user-specific room
-    socket.join(`user-${socket.userId}`);
+    if (socket.userId) {
+      socket.join(`user-${socket.userId}`);
+    }
+    if (socket.userRole) {
+      socket.join(`role-${socket.userRole}`);
+    }
 
-    // Join role-specific room
-    socket.join(`role-${socket.userRole}`);
-
-    // Handle order events
     socket.on('order:created', (data) => {
       io.to('role-manager').to('role-admin').emit('notification', {
         type: 'order_update',
@@ -53,7 +62,6 @@ const setupWebSocket = (io) => {
       });
     });
 
-    // Handle notification events
     socket.on('notification:send', (data) => {
       const { recipientId, type, title, message } = data;
       io.to(`user-${recipientId}`).emit('notification', {
@@ -64,7 +72,6 @@ const setupWebSocket = (io) => {
       });
     });
 
-    // Handle kitchen events
     socket.on('kitchen:item-ready', (data) => {
       io.to('role-staff').to('role-manager').emit('kitchen-update', {
         orderId: data.orderId,
@@ -74,12 +81,10 @@ const setupWebSocket = (io) => {
       });
     });
 
-    // Handle disconnection
     socket.on('disconnect', () => {
       console.log(`User ${socket.userId} disconnected`);
     });
 
-    // Handle errors
     socket.on('error', (error) => {
       console.error(`Socket error for user ${socket.userId}:`, error);
     });

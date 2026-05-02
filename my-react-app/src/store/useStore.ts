@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { User, Order, MenuItem, Table, OrderStatus, PaymentStatus, UserRole } from '../types';
-import { loginApi, fetchMenuItemsApi, fetchCategoriesApi, createMenuItemApi, updateMenuItemApi, deleteMenuItemApi, fetchTablesApi, fetchUsersApi, createUserApi,
+import { loginApi, fetchCurrentUserApi, logoutApi, fetchMenuItemsApi, fetchCategoriesApi, createMenuItemApi, updateMenuItemApi, deleteMenuItemApi, fetchTablesApi, fetchUsersApi, createUserApi,
   fetchOrdersApi, createOrderApi, updateOrderApi, updateOrderStatusApi, updateOrderPaymentStatusApi,
   changePasswordApi, fetchGroupsApi, fetchNotificationsApi } from '../api/client';
 
@@ -37,7 +37,7 @@ interface AppState {
   // Auth actions
   initializeApp: () => Promise<void>;
   login: (email: string, password: string) => Promise<boolean>;
-  logout: () => void;
+  logout: () => Promise<void>;
   loadMenuItems: () => Promise<void>;
   loadCategories: () => Promise<void>;
   loadTables: () => Promise<void>;
@@ -225,11 +225,24 @@ export const useStore = create<AppState>((set, get) => ({
       set({ token, currentUser: JSON.parse(currentUser) as User });
     }
 
+    if (!currentUser) {
+      try {
+        const response = await fetchCurrentUserApi();
+        const user = formatBackendUser(response);
+        set({ currentUser: user, token: token ?? null });
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('currentUser', JSON.stringify(user));
+        }
+      } catch (error) {
+        console.warn('No active session found');
+      }
+    }
+
     await get().loadMenuItems();
     await get().loadCategories();
     await get().loadNotifications();
 
-    if (token) {
+    if (token || get().currentUser) {
       await get().loadTables();
       await get().loadUsers();
       await get().loadOrders();
@@ -262,7 +275,13 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  logout: () => {
+  logout: async () => {
+    try {
+      await logoutApi();
+    } catch (error) {
+      console.warn('Logout request failed, clearing local session anyway');
+    }
+
     if (typeof window !== 'undefined') {
       localStorage.removeItem('authToken');
       localStorage.removeItem('currentUser');

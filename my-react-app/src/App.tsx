@@ -25,10 +25,29 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
 function App() {
   const initializeApp = useStore(state => state.initializeApp);
+  const currentUser = useStore(state => state.currentUser);
+  const loadOrders = useStore(state => state.loadOrders);
+  const loadTables = useStore(state => state.loadTables);
+  const loadNotifications = useStore(state => state.loadNotifications);
 
   useEffect(() => {
     void initializeApp();
   }, [initializeApp]);
+
+  useEffect(() => {
+    let intervalId: number | undefined;
+    if (currentUser) {
+      intervalId = window.setInterval(() => {
+        void Promise.all([loadOrders(), loadTables(), loadNotifications()]);
+      }, 1000);
+    }
+
+    return () => {
+      if (intervalId) {
+        window.clearInterval(intervalId);
+      }
+    };
+  }, [currentUser, loadOrders, loadTables, loadNotifications]);
 
   return (
     <BrowserRouter>

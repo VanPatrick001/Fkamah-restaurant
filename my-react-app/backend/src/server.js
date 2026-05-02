@@ -3,8 +3,11 @@ const http = require('http');
 const socketIO = require('socket.io');
 const cors = require('cors');
 const helmet = require('helmet');
+const session = require('express-session');
+const PgSession = require('connect-pg-simple')(session);
 require('dotenv').config();
 
+const pool = require('./config/database');
 const { initializeDatabase } = require('./db/initialize');
 const { setupWebSocket } = require('./utils/websocket');
 const userRoutes = require('./routes/userRoutes');
@@ -17,24 +20,43 @@ const groupRoutes = require('./routes/groupRoutes');
 const app = express();
 const server = http.createServer(app);
 
-// Initialize WebSocket
-const io = socketIO(server, {
-  cors: {
-    origin: process.env.WS_ORIGIN || '*',
-    methods: ['GET', 'POST'],
+const CLIENT_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:5173';
+const sessionMiddleware = session({
+  store: new PgSession({
+    pool,
+    tableName: 'session',
+    createTableIfMissing: true,
+  }),
+  secret: process.env.SESSION_SECRET || 'supersecret-session-key',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production',
+    httpOnly: true,
+    sameSite: 'none',
+    maxAge: 24 * 60 * 60 * 1000,
   },
 });
 
-setupWebSocket(io);
+// Initialize WebSocket
+const io = socketIO(server, {
+  cors: {
+    origin: CLIENT_ORIGIN,
+    methods: ['GET', 'POST'],
+    credentials: true,
+  },
+});
 
-// Middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || '*',
+  origin: CLIENT_ORIGIN,
   credentials: true,
 }));
+app.use(sessionMiddleware);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+setupWebSocket(io, sessionMiddleware);
 
 // Request logging middleware
 app.use((req, res, next) => {

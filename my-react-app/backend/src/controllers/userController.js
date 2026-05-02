@@ -30,6 +30,11 @@ const register = async (req, res) => {
     const user = result.rows[0];
     const token = generateToken(user);
 
+    if (req.session) {
+      req.session.userId = user.id;
+      req.session.userRole = user.role;
+    }
+
     res.status(201).json({
       user,
       token,
@@ -62,6 +67,11 @@ const login = async (req, res) => {
 
     const token = generateToken(user);
 
+    if (req.session) {
+      req.session.userId = user.id;
+      req.session.userRole = user.role;
+    }
+
     res.json({
       user: {
         id: user.id,
@@ -74,6 +84,51 @@ const login = async (req, res) => {
     });
   } catch (error) {
     console.error('Login error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+const getCurrentUser = async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const userId = req.user.id;
+    const result = await pool.query(
+      `SELECT id, email, first_name, last_name, role, phone, is_active
+       FROM users WHERE id = $1`,
+      [userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const user = result.rows[0];
+    res.json(user);
+  } catch (error) {
+    console.error('Get current user error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+const logout = (req, res) => {
+  try {
+    if (req.session) {
+      req.session.destroy((err) => {
+        if (err) {
+          console.error('Logout error:', err);
+          return res.status(500).json({ error: 'Unable to log out' });
+        }
+        res.clearCookie('connect.sid');
+        return res.json({ message: 'Logged out successfully' });
+      });
+    } else {
+      res.json({ message: 'Logged out successfully' });
+    }
+  } catch (error) {
+    console.error('Logout error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
@@ -237,6 +292,8 @@ const deleteUser = async (req, res) => {
 module.exports = {
   register,
   login,
+  getCurrentUser,
+  logout,
   createUser,
   getAllUsers,
   getUserById,

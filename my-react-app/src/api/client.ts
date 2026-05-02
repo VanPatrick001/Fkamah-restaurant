@@ -21,6 +21,7 @@ async function request(path: string, options: RequestInit = {}) {
   const response = await fetch(`${API_PREFIX}${path}`, {
     ...options,
     headers,
+    credentials: 'include',
   });
 
   const text = await response.text();
@@ -39,6 +40,9 @@ export const loginApi = (email: string, password: string) =>
     method: 'POST',
     body: JSON.stringify({ email, password }),
   });
+
+export const fetchCurrentUserApi = () => request('/auth/me');
+export const logoutApi = () => request('/auth/logout', { method: 'POST' });
 
 export const fetchMenuItemsApi = () => request('/items');
 export const fetchCategoriesApi = () => request('/categories');
