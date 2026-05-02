@@ -20,6 +20,7 @@ import {
   Volume2
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
+import { connectSocket, disconnectSocket } from '../utils/socket';
 import type { UserRole } from '../types';
 
 interface LayoutProps {
@@ -40,7 +41,7 @@ const navItems: NavItem[] = [
   { path: '/tables', label: 'Tables', icon: <Table size={20} />, roles: ['admin', 'manager', 'waiter'] },
   { path: '/delivery', label: 'Livraisons', icon: <Truck size={20} />, roles: ['admin', 'manager', 'delivery'] },
   { path: '/invoices', label: 'Factures', icon: <Receipt size={20} />, roles: ['admin', 'manager', 'cashier'] },
-  { path: '/menu', label: 'Menu', icon: <UtensilsCrossed size={20} />, roles: ['admin', 'manager'] },
+  { path: '/menu', label: 'Menu', icon: <UtensilsCrossed size={20} />, roles: ['admin', 'manager', 'cook'] },
   { path: '/users', label: 'Utilisateurs', icon: <Users size={20} />, roles: ['admin'] },
   { path: '/settings', label: 'Paramètres', icon: <Settings size={20} />, roles: ['admin', 'manager'] },
 ];
@@ -71,7 +72,7 @@ export default function Layout({ children }: LayoutProps) {
   const [lastNotificationCount, setLastNotificationCount] = useState(0);
   const location = useLocation();
   const navigate = useNavigate();
-  const { currentUser, logout, notifications, markNotificationRead, clearNotifications } = useStore();
+  const { currentUser, token, logout, notifications, markNotificationRead, clearNotifications, addNotification } = useStore();
   
   // Filter notifications for current user's role
   const userNotifications = notifications.filter(n => 
@@ -99,6 +100,30 @@ export default function Layout({ children }: LayoutProps) {
     currentUser && item.roles.includes(currentUser.role)
   );
   
+  useEffect(() => {
+    if (!currentUser || !token) {
+      disconnectSocket();
+      return;
+    }
+
+    const socket = connectSocket(token);
+
+    const handleSocketNotification = (payload: any) => {
+      addNotification({
+        type: payload.type === 'order_ready' ? 'order_ready' : 'order_updated',
+        message: payload.message || payload.title || 'Nouvelle notification',
+        orderId: payload.orderId || payload.order_id || '',
+        forRole: [currentUser.role],
+      });
+    };
+
+    socket.on('notification', handleSocketNotification);
+
+    return () => {
+      socket.off('notification', handleSocketNotification);
+    };
+  }, [currentUser, token, addNotification]);
+
   const handleNotificationClick = (notificationId: string, _orderId: string) => {
     markNotificationRead(notificationId);
     // Navigate to relevant page based on order

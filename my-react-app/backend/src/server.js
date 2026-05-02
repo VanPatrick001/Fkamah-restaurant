@@ -47,6 +47,12 @@ app.get('/health', (req, res) => {
   res.json({ status: 'healthy', timestamp: new Date() });
 });
 
+// Make io accessible to routes
+app.use((req, res, next) => {
+  req.io = io;
+  next();
+});
+
 // API Routes
 app.use('/api/auth', userRoutes);
 app.use('/api', menuRoutes);
@@ -54,12 +60,6 @@ app.use('/api', tableRoutes);
 app.use('/api', orderRoutes);
 app.use('/api', groupRoutes);
 app.use('/api', notificationRoutes);
-
-// Make io accessible to routes
-app.use((req, res, next) => {
-  req.io = io;
-  next();
-});
 
 // Error handling middleware
 app.use((err, req, res, next) => {

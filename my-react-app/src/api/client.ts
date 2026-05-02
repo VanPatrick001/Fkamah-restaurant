@@ -41,6 +41,36 @@ export const loginApi = (email: string, password: string) =>
   });
 
 export const fetchMenuItemsApi = () => request('/items');
+export const fetchCategoriesApi = () => request('/categories');
+export const createMenuItemApi = (body: {
+  categoryId: string;
+  name: string;
+  description: string;
+  price: number;
+  imageUrl?: string;
+  preparationTime?: number;
+  isVegetarian?: boolean;
+  isVegan?: boolean;
+}) => request('/items', {
+  method: 'POST',
+  body: JSON.stringify(body),
+});
+export const updateMenuItemApi = (menuItemId: string, body: {
+  name?: string;
+  description?: string;
+  price?: number;
+  imageUrl?: string;
+  preparationTime?: number;
+  isAvailable?: boolean;
+  isVegetarian?: boolean;
+  isVegan?: boolean;
+}) => request(`/items/${menuItemId}`, {
+  method: 'PUT',
+  body: JSON.stringify(body),
+});
+export const deleteMenuItemApi = (menuItemId: string) => request(`/items/${menuItemId}`, {
+  method: 'DELETE',
+});
 export const fetchTablesApi = () => request('/tables');
 export const fetchUsersApi = () => request('/auth/users');
 export const createUserApi = (body: {

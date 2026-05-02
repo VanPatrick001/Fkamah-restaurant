@@ -25,16 +25,15 @@ const createNotification = async (req, res) => {
 
 const getAllNotifications = async (req, res) => {
   try {
-    const { userId } = req.query;
+    const userId = req.query.userId || req.user?.id;
     const { isRead } = req.query;
 
-    let query = 'SELECT * FROM notifications WHERE 1=1';
-    const params = [];
-
-    if (userId) {
-      query += ` AND user_id = $${params.length + 1}`;
-      params.push(userId);
+    if (!userId) {
+      return res.status(400).json({ error: 'User ID is required' });
     }
+
+    let query = 'SELECT * FROM notifications WHERE user_id = $1';
+    const params = [userId];
 
     if (isRead !== undefined) {
       query += ` AND is_read = $${params.length + 1}`;

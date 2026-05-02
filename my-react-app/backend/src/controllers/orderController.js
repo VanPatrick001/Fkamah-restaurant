@@ -50,8 +50,9 @@ const buildOrderResponse = async (orderId) => {
 const createOrder = async (req, res) => {
   try {
     const { tableId, userId, items, notes, orderType } = req.body;
+    const orderOwnerId = userId || req.user?.id;
 
-    if (!userId || !items || items.length === 0) {
+    if (!orderOwnerId || !items || items.length === 0) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
@@ -68,7 +69,7 @@ const createOrder = async (req, res) => {
       await client.query(
         `INSERT INTO orders (id, table_id, user_id, order_type, notes)
          VALUES ($1, $2, $3, $4, $5)`,
-        [orderId, tableId || null, userId, orderType || 'dine-in', notes]
+        [orderId, tableId || null, orderOwnerId, orderType || 'dine-in', notes]
       );
 
       let totalAmount = 0;
@@ -247,7 +248,7 @@ const updateOrderStatus = async (req, res) => {
       return res.status(400).json({ error: 'Status is required' });
     }
 
-    const existing = await pool.query('SELECT status FROM orders WHERE id = $1', [id]);
+    const existing = await pool.query('SELECT status, user_id FROM orders WHERE id = $1', [id]);
     if (existing.rows.length === 0) {
       return res.status(404).json({ error: 'Order not found' });
     }
@@ -261,6 +262,42 @@ const updateOrderStatus = async (req, res) => {
       from: existing.rows[0].status,
       to: status,
     });
+
+    if (status === 'ready') {
+      const orderOwner = existing.rows[0].user_id;
+      const notificationId = uuidv4();
+      const message = `La commande #${id.slice(-4)} est prête. Merci de la servir rapidement.`;
+
+      if (orderOwner) {
+        await pool.query(
+          `INSERT INTO notifications (id, user_id, type, title, message, order_id)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [notificationId, orderOwner, 'order_update', 'Commande prête', message, id]
+        );
+      }
+
+      if (req.io) {
+        if (orderOwner) {
+          req.io.to(`user-${orderOwner}`).emit('notification', {
+            id: notificationId,
+            type: 'order_ready',
+            title: 'Commande prête',
+            message,
+            orderId: id,
+            createdAt: new Date(),
+          });
+        }
+
+        req.io.to('role-manager').emit('notification', {
+          id: uuidv4(),
+          type: 'order_update',
+          title: 'Commande prête',
+          message: `Commande #${id.slice(-4)} est prête`,
+          orderId: id,
+          createdAt: new Date(),
+        });
+      }
+    }
 
     const order = await buildOrderResponse(id);
     res.json(order);
@@ -436,6 +473,22 @@ const cancelOrder = async (req, res) => {
   }
 };
 
+const deleteOrder = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query('DELETE FROM orders WHERE id = $1 RETURNING id', [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    res.json({ message: 'Order deleted successfully' });
+  } catch (error) {
+    console.error('Delete order error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
 module.exports = {
   createOrder,
   getAllOrders,
@@ -445,4 +498,5 @@ module.exports = {
   updatePaymentStatus,
   completeOrder,
   cancelOrder,
+  deleteOrder,
 };

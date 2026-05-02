@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import type { User, Order, MenuItem, Table, OrderStatus, PaymentStatus, UserRole } from '../types';
-import { loginApi, fetchMenuItemsApi, fetchTablesApi, fetchUsersApi, createUserApi,
+import { loginApi, fetchMenuItemsApi, fetchCategoriesApi, createMenuItemApi, updateMenuItemApi, deleteMenuItemApi, fetchTablesApi, fetchUsersApi, createUserApi,
   fetchOrdersApi, createOrderApi, updateOrderApi, updateOrderStatusApi, updateOrderPaymentStatusApi,
-  changePasswordApi, fetchGroupsApi } from '../api/client';
+  changePasswordApi, fetchGroupsApi, fetchNotificationsApi } from '../api/client';
 
 interface Notification {
   id: string;
@@ -29,6 +29,7 @@ interface AppState {
   users: User[];
   orders: Order[];
   menuItems: MenuItem[];
+  categories: Array<{ id: string; name: string; description?: string }>;
   tables: Table[];
   notifications: Notification[];
   groups?: Array<{ id: string; name: string; description?: string }>;
@@ -38,10 +39,12 @@ interface AppState {
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
   loadMenuItems: () => Promise<void>;
+  loadCategories: () => Promise<void>;
   loadTables: () => Promise<void>;
   loadUsers: () => Promise<void>;
   loadOrders: () => Promise<void>;
   loadGroups: () => Promise<void>;
+  loadNotifications: () => Promise<void>;
   addUser: (user: NewUserPayload) => Promise<boolean>;
   changePassword: (userId: string, oldPassword: string | undefined, newPassword: string) => Promise<boolean>;
   
@@ -59,9 +62,9 @@ interface AppState {
   updateTableStatus: (tableId: string, status: Table['status']) => void;
   
   // Menu actions
-  addMenuItem: (item: Omit<MenuItem, 'id'>) => void;
-  updateMenuItem: (id: string, data: Partial<MenuItem>) => void;
-  deleteMenuItem: (id: string) => void;
+  addMenuItem: (item: Omit<MenuItem, 'id'>) => Promise<boolean>;
+  updateMenuItem: (id: string, data: Partial<MenuItem>) => Promise<boolean>;
+  deleteMenuItem: (id: string) => Promise<boolean>;
   
   // Notification actions
   addNotification: (notification: Omit<Notification, 'id' | 'createdAt' | 'read'>) => void;
@@ -210,6 +213,7 @@ export const useStore = create<AppState>((set, get) => ({
   users: initialUsers,
   orders: initialOrders,
   menuItems: initialMenuItems,
+  categories: [],
   tables: initialTables,
   notifications: [],
 
@@ -222,6 +226,8 @@ export const useStore = create<AppState>((set, get) => ({
     }
 
     await get().loadMenuItems();
+    await get().loadCategories();
+    await get().loadNotifications();
 
     if (token) {
       await get().loadTables();
@@ -240,6 +246,8 @@ export const useStore = create<AppState>((set, get) => ({
       localStorage.setItem('currentUser', JSON.stringify(user));
 
       await get().loadMenuItems();
+      await get().loadCategories();
+      await get().loadNotifications();
       await get().loadTables();
       await get().loadOrders();
       await get().loadGroups();
@@ -268,6 +276,15 @@ export const useStore = create<AppState>((set, get) => ({
       set({ menuItems: data.map(formatBackendMenuItem) });
     } catch (error) {
       console.error('Could not load menu items from backend:', error);
+    }
+  },
+
+  loadCategories: async () => {
+    try {
+      const data = await fetchCategoriesApi();
+      set({ categories: Array.isArray(data) ? data : [] });
+    } catch (error) {
+      console.error('Could not load menu categories from backend:', error);
     }
   },
 
@@ -306,6 +323,35 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
+  loadNotifications: async () => {
+    if (!get().token || !get().currentUser) {
+      return;
+    }
+
+    try {
+      const data = await fetchNotificationsApi();
+      const currentRole = get().currentUser?.role || 'staff';
+      const notifications = Array.isArray(data) ? data.map((n: Record<string, unknown>) => {
+        const notificationType: Notification['type'] = typeof n.type === 'string' && (n.type === 'order_ready' || n.type === 'new_order')
+          ? n.type
+          : 'order_updated';
+
+        return {
+          id: typeof n.id === 'string' ? n.id : '',
+          type: notificationType,
+          message: typeof n.message === 'string' ? n.message : '',
+          orderId: typeof n.order_id === 'string' ? n.order_id : '',
+          forRole: [currentRole],
+          read: n.is_read === true,
+          createdAt: new Date(typeof n.created_at === 'string' ? n.created_at : Date.now()),
+        };
+      }) : [];
+      set({ notifications });
+    } catch (error) {
+      console.error('Could not load notifications:', error);
+    }
+  },
+
   loadGroups: async () => {
     if (!get().token) {
       return;
@@ -316,6 +362,66 @@ export const useStore = create<AppState>((set, get) => ({
       set({ groups: Array.isArray(data) ? data : [] });
     } catch (error) {
       console.error('Could not load groups from backend:', error);
+    }
+  },
+
+  addMenuItem: async (itemData) => {
+    try {
+      const category = get().categories.find(c => c.name === itemData.category);
+      const categoryId = category?.id ?? get().categories[0]?.id;
+      if (!categoryId) {
+        throw new Error('Aucun catégorie de menu disponible');
+      }
+
+      const response = await createMenuItemApi({
+        categoryId,
+        name: itemData.name,
+        description: itemData.description,
+        price: itemData.price,
+        imageUrl: itemData.image,
+        preparationTime: 15,
+        isVegetarian: false,
+        isVegan: false,
+      });
+
+      const createdItem = formatBackendMenuItem(response);
+      set(state => ({ menuItems: [...state.menuItems, createdItem] }));
+      return true;
+    } catch (error) {
+      console.error('Could not create menu item:', error);
+      return false;
+    }
+  },
+
+  updateMenuItem: async (id, data) => {
+    try {
+      const response = await updateMenuItemApi(id, {
+        name: data.name,
+        description: data.description,
+        price: data.price,
+        imageUrl: data.image,
+        isAvailable: data.available,
+      });
+
+      const updatedItem = formatBackendMenuItem(response);
+      set(state => ({
+        menuItems: state.menuItems.map(m => m.id === id ? updatedItem : m)
+      }));
+      return true;
+    } catch (error) {
+      console.error('Could not update menu item:', error);
+      return false;
+    }
+  },
+
+  deleteMenuItem: async (id) => {
+    try {
+      await deleteMenuItemApi(id);
+      set(state => ({ menuItems: state.menuItems.filter(m => m.id !== id) }));
+      return true;
+    } catch (error) {
+      console.error('Could not delete menu item:', error);
+      return false;
     }
   },
 
@@ -466,24 +572,6 @@ export const useStore = create<AppState>((set, get) => ({
     set(state => ({
       tables: state.tables.map(t => t.id === tableId ? { ...t, status } : t)
     }));
-  },
-
-  addMenuItem: (itemData) => {
-    const newItem: MenuItem = {
-      ...itemData,
-      id: `menu-${Date.now()}`,
-    };
-    set(state => ({ menuItems: [...state.menuItems, newItem] }));
-  },
-
-  updateMenuItem: (id, data) => {
-    set(state => ({
-      menuItems: state.menuItems.map(m => m.id === id ? { ...m, ...data } : m)
-    }));
-  },
-
-  deleteMenuItem: (id) => {
-    set(state => ({ menuItems: state.menuItems.filter(m => m.id !== id) }));
   },
 
   // Notification actions

@@ -5,13 +5,13 @@ import { useStore } from '../store/useStore';
 import type { MenuItem } from '../types';
 
 export default function Menu() {
-  const { menuItems, addMenuItem, updateMenuItem, deleteMenuItem } = useStore();
+  const { menuItems, categories, addMenuItem, updateMenuItem, deleteMenuItem } = useStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
   
-  const categories = ['all', ...new Set(menuItems.map(m => m.category))];
+  const categoryNames = ['all', ...categories.map(cat => cat.name)];
   
   const filteredItems = menuItems.filter(item => {
     const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase());
@@ -64,7 +64,7 @@ export default function Menu() {
           />
         </div>
         <div className="flex gap-2 overflow-x-auto pb-2">
-          {categories.map(cat => (
+          {categoryNames.map(cat => (
             <button
               key={cat}
               onClick={() => setSelectedCategory(cat)}
@@ -146,6 +146,7 @@ export default function Menu() {
         {showModal && (
           <MenuItemModal
             item={editingItem}
+            categories={categoryNames.filter(name => name !== 'all')}
             onClose={() => { setShowModal(false); setEditingItem(null); }}
             onSave={(data) => {
               if (editingItem) {
@@ -165,18 +166,17 @@ export default function Menu() {
 
 interface MenuItemModalProps {
   item: MenuItem | null;
+  categories: string[];
   onClose: () => void;
   onSave: (data: Partial<MenuItem>) => void;
 }
 
-function MenuItemModal({ item, onClose, onSave }: MenuItemModalProps) {
+function MenuItemModal({ item, categories, onClose, onSave }: MenuItemModalProps) {
   const [name, setName] = useState(item?.name || '');
   const [description, setDescription] = useState(item?.description || '');
   const [price, setPrice] = useState(item?.price?.toString() || '');
-  const [category, setCategory] = useState(item?.category || 'Plats');
+  const [category, setCategory] = useState(item?.category || categories[0] || 'Plats');
   const [available, setAvailable] = useState(item?.available ?? true);
-  
-  const categories = ['Poulet', 'Mouton', 'Plats Légers', 'Entrées', 'Accompagnements', 'Boissons', 'Desserts'];
   
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
